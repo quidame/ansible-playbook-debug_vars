@@ -77,7 +77,8 @@
           failed_when:
             - debug[item] == oh_my_bad
             # filter results for variables that are not expected to be defined
-            # so early.
+            # so early. Say, here: all variables whose the name matches a given
+            # regexp.
             #- not item | regex_search('_password$')
 
         - name: SUCCESS
