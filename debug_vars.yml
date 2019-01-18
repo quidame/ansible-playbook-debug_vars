@@ -1,7 +1,7 @@
-# This is a simple, short and stupid playbook to track undefined user-defined
-# variables declared in `group_vars` and `host_vars` directories (beside the
-# playbook as well as within inventory). Wait. What does it mean exactly ?
-# Undefined user-defined variables ? For example:
+# This is a simple, short, standalone and stupid playbook to track undefined
+# user-defined variables declared in `group_vars` and `host_vars` directories
+# (beside the playbook as well as within inventory). Wait. What does it mean,
+# exactly: undefined user-defined variables ? For example:
 #
 #---
 #bar: "foo"
@@ -79,6 +79,10 @@
             # filter results for variables that are not expected to be defined
             # so early.
             #- not item | regex_search('_password$')
+
+        - name: SUCCESS
+          debug:
+            msg: "All your variables are defined."
 
       rescue:
         - name: "UNDEFINED VARIABLE(S) [/{{ result.stdout_lines | length }}]"
