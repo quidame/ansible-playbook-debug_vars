@@ -22,6 +22,12 @@
 #---
 #foo: "{{ ansible_fqdn }}"
 #
+# Variables to control the behavior of this playbook with --extra-vars:
+#
+# * debug_vars_with_facts (bool)
+# * debug_vars_accept_errors (int)
+# * debug_vars_ignore_errors (bool)
+#
 
 ---
 - hosts: all
@@ -66,7 +72,7 @@
         - name: evaluate variables (fail if undefined)
           debug:
             var: "{{ item }}"
-          loop: "{{ result.stdout_lines }}"
+          loop: "{{ result.stdout_lines + [ 'result.stdout_lines|length' ] }}"
           register: debug
           failed_when:
             - debug[item] == oh_my_bad
@@ -89,4 +95,7 @@
                 {% endfor %}{{ '' if loop.last else ',' }}{% endfor %}
               ]
             errors: "{{ digest | unique | difference(['']) }}"
+          failed_when:
+            - errors|length > debug_vars_accept_errors|default(0)|int
+            - not debug_vars_ignore_errors|default(False)|bool
 
