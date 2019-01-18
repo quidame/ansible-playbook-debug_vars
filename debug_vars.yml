@@ -1,0 +1,92 @@
+# This is a simple, short and stupid playbook to track undefined user-defined
+# variables declared in `group_vars` and `host_vars` directories (beside the
+# playbook as well as within inventory). Wait. What does it mean exactly ?
+# Undefined user-defined variables ? For example:
+#
+#---
+#bar: "foo"
+#foo: "{{ bar }}"
+#
+# ==> "foo": "foo"
+#
+#---
+#foo: "{{ bar }}"
+#
+# ==> VARIABLE IS NOT DEFINED!
+#
+# Here, `foo` is an user-defined variable (not an ansible reserved variable,
+# between others). If `bar` is defined, then `foo` is. If `bar` is not defined,
+# then `foo` is not too. But `foo` will cause an error, not `bar`. Try with
+# `debug_vars_with_facts` set to yes and no, and:
+#
+#---
+#foo: "{{ ansible_fqdn }}"
+#
+
+---
+- hosts: all
+  gather_facts: "{{ debug_vars_with_facts|default(False) }}"
+
+  # No need to set them in a dedicated set_fact task.
+  vars:
+    oh_my_bad: "VARIABLE IS NOT DEFINED!"
+    varfiles_all:
+      - "group_vars/all"
+      - "group_vars/all.yml"
+      - "{{ inventory_dir }}/group_vars/all"
+      - "{{ inventory_dir }}/group_vars/all.yml"
+    varfiles_groups: |
+      [
+        {% for g in group_names %}
+          "group_vars/{{ g }}",
+          "group_vars/{{ g }}.yml",
+          "{{ inventory_dir }}/group_vars/{{ g }}",
+          "{{ inventory_dir }}/group_vars/{{ g }}.yml"
+          {{ '' if loop.last else ',' }}
+        {% endfor %}
+      ]
+    varfiles_host:
+      - "host_vars/{{ inventory_hostname }}"
+      - "host_vars/{{ inventory_hostname }}.yml"
+      - "{{ inventory_dir }}/host_vars/{{ inventory_hostname }}"
+      - "{{ inventory_dir }}/host_vars/{{ inventory_hostname }}.yml"
+
+  tasks:
+    - name: get variables names (sorted)
+      shell: >
+        grep -hors '^[a-z][_a-zA-Z0-9]*:' {{ ( varfiles_all + varfiles_groups + varfiles_host ) | join( ' ' ) }} |
+        sed 's,:,,' | sort -u
+      delegate_to: localhost
+      connection: local
+      register: result
+      changed_when: false
+
+    - name: track undefined variables
+      block:
+        - name: evaluate variables (fail if undefined)
+          debug:
+            var: "{{ item }}"
+          loop: "{{ result.stdout_lines }}"
+          register: debug
+          failed_when:
+            - debug[item] == oh_my_bad
+            # filter results for variables that are not expected to be defined
+            # so early.
+            #- not item | regex_search('_password$')
+
+      rescue:
+        - name: "UNDEFINED VARIABLE(S) [/{{ result.stdout_lines | length }}]"
+          debug:
+            var: errors
+          vars:
+            digest: |
+              [
+                {% for res in debug.results %}
+                {% for key in res %}
+                {% if res[key] == oh_my_bad %}
+                "{{ key }}"{% else %}""
+                {% endif %}{{ '' if loop.last else ',' }}
+                {% endfor %}{{ '' if loop.last else ',' }}{% endfor %}
+              ]
+            errors: "{{ digest | unique | difference(['']) }}"
+
