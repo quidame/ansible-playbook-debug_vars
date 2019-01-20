@@ -25,20 +25,20 @@
 #
 # Variables to control the behavior of this playbook:
 #
-# | NAME                     | TYPE   | DEFAULT           | SHORTCUT     |
-# | ------------------------ | ------ | ----------------- | ------------ |
-# | debug_vars__remote_facts | bool   | False             | remote_facts |
-# | debug_vars__regex_filter | regex  | : (match nothing) | regex_filter |
-# | debug_vars__assume_error | int    | 0                 | assume_error |
-# | debug_vars__check_vars   | list,  |                   | check_vars   |
-# |                          | string |                   |              |
+# | NAME                     | SHORTCUT     | TYPE   | DEFAULT           |
+# | ------------------------ | ------------ | ------ | ----------------- |
+# | debug_vars__remote_facts | remote_facts | bool   | False             |
+# | debug_vars__regex_filter | regex_filter | regex  | : (match nothing) |
+# | debug_vars__assume_error | assume_error | int    | 0                 |
+# | debug_vars__check_vars   | check_vars   | list,  |                   |
+# |                          |              | string |                   |
 #
 # Usage:
 # - set debug_vars__* variables in group_vars/
 # - use the shortcuts as extra-vars in commanline
 #
 # Example:
-# ansible-playbook debug_vars.yml -e check_vars=foobar
+# ansible-playbook debug_vars.yml -e remote_facts=yes -e regex_filter='_password$'
 
 ---
 - hosts: all
@@ -75,16 +75,33 @@
   tasks:
     - name: get list of variables
       shell: >
-        grep -hors '^[a-z][_a-zA-Z0-9]*:' {{ ( varfiles_all + varfiles_groups + varfiles_host ) | join( ' ' ) }} |
-        sed 's,:,,' | sort -u
+        grep -Ehors '^[_a-zA-Z0-9]+' {{ ( varfiles_all + varfiles_groups + varfiles_host ) | join( ' ' ) }} |
+        sort
       delegate_to: localhost
       connection: local
       register: result
       changed_when: false
+      when: check_vars in [[],'']
 
     - name: set list of variables
       set_fact:
-        variables: "{{ [check_vars.split(' ')]|flatten|difference(['']) if check_vars not in [[],''] else result.stdout_lines }}"
+        # We accept all relevant input formats to get a final yaml list, sorted:
+        # - yaml list
+        # - single word
+        # - comma-space-separated list of words
+        #   example: foo, bar,foobar baz   foobaz foo, ,,bar
+        #   will be converted to: [ "bar", "baz", "foo", "boobar", "foobaz" ]
+        variables: |
+          {%
+            if check_vars in [[],'']
+              %}{{ result.stdout_lines | unique }}{%
+            elif check_vars|type_debug == 'list'
+              %}{{ check_vars | sort | unique }}{%
+            elif ',' in check_vars|string or ' ' in check_vars|string
+              %}{{ (check_vars|regex_replace( ' ', ',' )).split( ',' ) | difference(['']) | sort | unique }}{%
+            else %}{{ [check_vars] | flatten | sort | unique }}{%
+            endif
+          %}
 
     - name: display list of variables
       debug:
@@ -118,6 +135,6 @@
                 "{{ key }}"{% else %}""{% endif %}{{ '' if loop.last else ',' }}
                 {% endfor %}{{ '' if loop.last else ',' }}{% endfor %}
               ]
-            errors: "{{ digest | unique | difference(['']) }}"
+            errors: "{{ digest | difference(['']) }}"
           failed_when: errors|length > assume_error|int
 
