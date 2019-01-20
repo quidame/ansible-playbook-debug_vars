@@ -17,25 +17,40 @@
 # Here, `foo` is an user-defined variable (not an ansible reserved variable,
 # between others). If `bar` is defined, then `foo` is. If `bar` is not defined,
 # then `foo` is not too. But `foo` will cause an error, not `bar`. Try with
-# `debug_vars_with_facts` set to yes and no, and:
+# `debug_vars__remote_facts` set to yes and no, and:
 #
 #---
 #foo: "{{ ansible_fqdn }}"
 #
-# Variables to control the behavior of this playbook with --extra-vars:
 #
-# * debug_vars_with_facts (bool)
-# * debug_vars_accept_errors (int)
-# * debug_vars_ignore_errors (bool)
+# Variables to control the behavior of this playbook:
 #
+# | NAME                     | TYPE   | DEFAULT           | SHORTCUT     |
+# | ------------------------ | ------ | ----------------- | ------------ |
+# | debug_vars__remote_facts | bool   | False             | remote_facts |
+# | debug_vars__regex_filter | regex  | : (match nothing) | regex_filter |
+# | debug_vars__assume_error | int    | 0                 | assume_error |
+# | debug_vars__check_vars   | list,  |                   | check_vars   |
+# |                          | string |                   |              |
+#
+# Usage:
+# - set debug_vars__* variables in group_vars/
+# - use the shortcuts as extra-vars in commanline
+#
+# Example:
+# ansible-playbook debug_vars.yml -e check_vars=foobar
 
 ---
 - hosts: all
-  gather_facts: "{{ debug_vars_with_facts|default(False) }}"
+  gather_facts: "{{ remote_facts|bool if remote_facts is defined else
+                    debug_vars__remote_facts|default(False)|bool }}"
 
-  # No need to set them in a dedicated set_fact task.
   vars:
     oh_my_bad: "VARIABLE IS NOT DEFINED!"
+    check_vars: "{{ debug_vars__check_vars|default([]) }}"
+    regex_filter: "{{ debug_vars__regex_filter|default(':') }}"
+    assume_error: "{{ debug_vars__assume_error|default(0) }}"
+
     varfiles_all:
       - "group_vars/all"
       - "group_vars/all.yml"
@@ -58,7 +73,7 @@
       - "{{ inventory_dir }}/host_vars/{{ inventory_hostname }}.yml"
 
   tasks:
-    - name: get variables names (sorted)
+    - name: get list of variables
       shell: >
         grep -hors '^[a-z][_a-zA-Z0-9]*:' {{ ( varfiles_all + varfiles_groups + varfiles_host ) | join( ' ' ) }} |
         sed 's,:,,' | sort -u
@@ -67,40 +82,42 @@
       register: result
       changed_when: false
 
-    - name: track undefined variables
+    - name: set list of variables
+      set_fact:
+        variables: "{{ [check_vars.split(' ')]|flatten|difference(['']) if check_vars not in [[],''] else result.stdout_lines }}"
+
+    - name: display list of variables
+      debug:
+        var: variables
+
+    - name: catch undefined variables
       block:
-        - name: evaluate variables (fail if undefined)
+        - name: evaluate variables (fail if undefined and not filtered)
           debug:
             var: "{{ item }}"
-          loop: "{{ result.stdout_lines + [ 'result.stdout_lines|length' ] }}"
+          loop: "{{ variables }}"
           register: debug
           failed_when:
             - debug[item] == oh_my_bad
-            # filter results for variables that are not expected to be defined
-            # so early. Say, here: all variables whose the name matches a given
-            # regexp.
-            #- not item | regex_search('_password$')
+            - not item | regex_search(regex_filter)
 
         - name: SUCCESS
           debug:
-            msg: "All your variables are defined."
+            msg: "all variables ({{ variables | length }}) are defined{{
+              '' if regex_filter == ':' else ' - or filtered by this regex: `%s`' % regex_filter }}."
 
       rescue:
-        - name: "UNDEFINED VARIABLE(S) [/{{ result.stdout_lines | length }}]"
+        - name: "UNDEFINED VARIABLE(S) [/{{ variables | length }}]"
           debug:
             var: errors
           vars:
             digest: |
               [
-                {% for res in debug.results %}
-                {% for key in res %}
-                {% if res[key] == oh_my_bad %}
-                "{{ key }}"{% else %}""
-                {% endif %}{{ '' if loop.last else ',' }}
+                {% for res in debug.results %}{% for key in res %}
+                {% if res[key] == oh_my_bad and not key|regex_search(regex_filter) %}
+                "{{ key }}"{% else %}""{% endif %}{{ '' if loop.last else ',' }}
                 {% endfor %}{{ '' if loop.last else ',' }}{% endfor %}
               ]
             errors: "{{ digest | unique | difference(['']) }}"
-          failed_when:
-            - errors|length > debug_vars_accept_errors|default(0)|int
-            - not debug_vars_ignore_errors|default(False)|bool
+          failed_when: errors|length > assume_error|int
 
