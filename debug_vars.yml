@@ -1,3 +1,5 @@
+# WELCOME
+#
 # This is a simple, short, standalone and stupid playbook to track undefined
 # user-defined variables declared in `group_vars` and `host_vars` directories
 # (beside the playbook as well as within inventory). Wait. What does it mean,
@@ -23,19 +25,58 @@
 #foo: "{{ ansible_fqdn }}"
 #
 #
-# Variables to control the behavior of this playbook:
+# Without customization, this playbook will fail in almost all cases, i.e. it
+# will report errors about undefined variables.  If it is not the case, you
+# should first ensure that clear passwords are not hardcoded in your ansible's
+# git repository !
+#
+# Variables that control the behavior of this playbook:
 #
 # | NAME                     | SHORTCUT     | TYPE   | DEFAULT           |
 # | ------------------------ | ------------ | ------ | ----------------- |
 # | debug_vars__remote_facts | remote_facts | bool   | False             |
 # | debug_vars__regex_filter | regex_filter | regex  | : (match nothing) |
 # | debug_vars__assume_error | assume_error | int    | 0                 |
-# | debug_vars__check_vars   | check_vars   | list,  |                   |
+# | debug_vars__check_vars   | check_vars   | list,  | []                |
 # |                          |              | string |                   |
+#
+# * debug_vars__remote_facts
+#   When `True`, facts are gathered on the remote host, so variables whose the
+#   values depend on `{{ ansible_fqdn }}` or any other fact are defined. When
+#   `False`, there is no connection to the remote host at all, so variables
+#   consistency can be checked apart (no need of credentials to login to the
+#   hosts, even no need of the hosts themselves).
+#
+# * debug_vars__regex_filter
+#   Because of not gathering facts, or because of vaulted values, or because
+#   they are set by a specific role, or for whatever reason you want, some
+#   variables may be legitimally undefined when running this playbook. For
+#   example, with passwords vaulted and retrieved with an `include_vars`:
+#   debug_vars__regex_filter: '_password$'
+#   And yes, if you can't catch all of them in a simple regex, maybe it's time
+#   to think to refactor them.
+#
+# * debug_vars__assume_error
+#   A kind of quick start for the impatient. Instead of ignoring errors
+#   globally, and if a regex is too hard to write or maintain, assume a given
+#   number of errors. For example, assume 2 undefined variables. Unlike the
+#   regex_filter results, assumed errors are reported in the last task.
+#
+# * debug_vars__check_vars
+#   A specific variable, or a specific list of variables. When defined, it
+#   overrides the dynamic query of all the variables applying to the host,
+#   and only the provided variable names are evaluated. This can be used to
+#   compare values of a single variable on many hosts.
+#   The "list" can be either a YAML list, or any stringlist with commas and/or
+#   spaces as field separators. We don't want to worry further about Jenkins
+#   users inputs, we just accept versatile input formats. This is a valid
+#   input: 'foo, bar baz ,, ,  foobaz foo,foobar, '; that will be converted into
+#   the YAML list: [ "bar", "baz", "foo", "foobar", "foobaz" ]
+#
 #
 # Usage:
 # - set debug_vars__* variables in group_vars/
-# - use the shortcuts as extra-vars in commanline
+# - use the shortcuts as extra-vars in commandline
 #
 # Example:
 # ansible-playbook debug_vars.yml -e remote_facts=yes -e regex_filter='_password$'
@@ -73,6 +114,12 @@
       - "{{ inventory_dir }}/host_vars/{{ inventory_hostname }}.yml"
 
   tasks:
+    # In all cases, some files or directories don't exist, and grep will fail
+    # (exit code 2). Piping its output to sort allows the entire command to
+    # never fail.  By design, elements of the list aren't deduplicated at this
+    # step, so it is possible to see how many times a variable is declared,
+    # i.e. how much the repo is simple, clear and easy to understand and to
+    # maintain, or is a gaz factory.
     - name: get list of variables
       shell: >
         grep -Ehors '^[_a-zA-Z0-9]+' {{ ( varfiles_all + varfiles_groups + varfiles_host ) | join( ' ' ) }} |
@@ -86,11 +133,10 @@
     - name: set list of variables
       set_fact:
         # We accept all relevant input formats to get a final yaml list, sorted:
-        # - yaml list
-        # - single word
-        # - comma-space-separated list of words
-        #   example: foo, bar,foobar baz   foobaz foo, ,,bar
-        #   will be converted to: [ "bar", "baz", "foo", "boobar", "foobaz" ]
+        # YAML list, single word, comma-space-separated list of words. Example:
+        #     foo, bar,foobar baz   foobaz foo, ,,bar
+        # will be converted to:
+        #     [ "bar", "baz", "foo", "boobar", "foobaz" ]
         variables: |
           {%
             if check_vars in [[],'']
@@ -121,7 +167,7 @@
         - name: SUCCESS
           debug:
             msg: "all variables ({{ variables | length }}) are defined{{
-              '' if regex_filter == ':' else ' - or filtered by this regex: `%s`' % regex_filter }}."
+              '' if regex_filter == ':' else ' - or filtered by this regex: `%s`' % regex_filter }}"
 
       rescue:
         - name: "UNDEFINED VARIABLE(S) [/{{ variables | length }}]"
