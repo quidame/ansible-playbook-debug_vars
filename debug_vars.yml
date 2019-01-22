@@ -87,7 +87,7 @@
                     debug_vars__remote_facts|default(False)|bool }}"
 
   vars:
-    oh_my_bad: "VARIABLE IS NOT DEFINED!"
+    oh_my_bad: '^VARIABLE IS NOT DEFINED!'
     check_vars: "{{ debug_vars__check_vars|default([]) }}"
     regex_filter: "{{ debug_vars__regex_filter|default(':') }}"
     assume_error: "{{ debug_vars__assume_error|default(0) }}"
@@ -161,7 +161,7 @@
           loop: "{{ variables }}"
           register: debug
           failed_when:
-            - debug[item] == oh_my_bad
+            - debug[item]|string | regex_search(oh_my_bad)
             - not item | regex_search(regex_filter)
 
         - name: SUCCESS
@@ -177,7 +177,7 @@
             digest: |
               [
                 {% for res in debug.results %}{% for key in res %}
-                {% if res[key] == oh_my_bad and not key|regex_search(regex_filter) %}
+                {% if res[key]|string | regex_search(oh_my_bad) and not key|regex_search(regex_filter) %}
                 "{{ key }}"{% else %}""{% endif %}{{ '' if loop.last else ',' }}
                 {% endfor %}{{ '' if loop.last else ',' }}{% endfor %}
               ]
