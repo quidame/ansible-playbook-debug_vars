@@ -14,7 +14,8 @@
 #---
 #foo: "{{ bar }}"
 #
-# ==> VARIABLE IS NOT DEFINED!
+# ==> "foo": "VARIABLE IS NOT DEFINED!"                       (not verbose)
+# ==> "foo": "VARIABLE IS NOT DEFINED!: 'bar' is undefined"   (verbose)
 #
 # Here, `foo` is an user-defined variable (not an ansible reserved variable,
 # between others). If `bar` is defined, then `foo` is. If `bar` is not defined,
@@ -71,7 +72,8 @@
 #   spaces as field separators. We don't want to worry further about Jenkins
 #   users inputs, we just accept versatile input formats. This is a valid
 #   input: 'foo, bar baz ,, ,  foobaz foo,foobar, '; that will be converted into
-#   the YAML list: [ "bar", "baz", "foo", "foobar", "foobaz" ]
+#   the YAML list: [ "bar", "baz", "foo", "foobar", "foobaz" ] (sorted and
+#   deduplicated).
 #
 #
 # Usage:
@@ -82,7 +84,8 @@
 # ansible-playbook debug_vars.yml -e remote_facts=yes -e regex_filter='_password$'
 
 ---
-- hosts: all
+- name: DEBUG VARIABLES
+  hosts: all
   gather_facts: "{{ remote_facts|bool if remote_facts is defined else
                     debug_vars__remote_facts|default(False)|bool }}"
 
@@ -149,6 +152,7 @@
             endif
           %}
 
+
     - name: display list of variables
       debug:
         var: variables
@@ -165,6 +169,7 @@
               "{{ dup }}": "{{ result.stdout_lines.count(dup) }}"{{ '' if loop.last else ',' }}
             {% endfor %}
           }
+
 
     - name: catch undefined variables
       block:
