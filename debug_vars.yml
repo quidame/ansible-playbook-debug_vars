@@ -128,7 +128,6 @@
       connection: local
       register: result
       changed_when: false
-      when: check_vars in [[],'']
 
     - name: set list of variables
       set_fact:
@@ -137,6 +136,7 @@
         #     foo, bar,foobar baz   foobaz foo, ,,bar
         # will be converted to:
         #     [ "bar", "baz", "foo", "boobar", "foobaz" ]
+        # It uses a pythonic split() method, as there is no such filter in jinja2
         variables: |
           {%
             if check_vars in [[],'']
@@ -152,6 +152,19 @@
     - name: display list of variables
       debug:
         var: variables
+
+    - name: display duplicate variables
+      debug:
+        var: duplicates
+      when: duplicates != {}
+      vars:
+        # It uses a pythonic count() method, as there is no such filter in jinja2
+        duplicates: |
+          {
+            {% for dup in variables if result.stdout_lines.count(dup) > 1 %}
+              "{{ dup }}": "{{ result.stdout_lines.count(dup) }}"{{ '' if loop.last else ',' }}
+            {% endfor %}
+          }
 
     - name: catch undefined variables
       block:
