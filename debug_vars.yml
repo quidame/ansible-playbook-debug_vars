@@ -1,4 +1,5 @@
-# WELCOME
+---
+# DEBUG VARIABLES
 #
 # This is a simple, short, standalone and stupid playbook to track undefined
 # user-defined variables declared in `group_vars` and `host_vars` directories
@@ -83,7 +84,7 @@
 # Example:
 # ansible-playbook debug_vars.yml -e remote_facts=yes -e regex_filter='_password$'
 
----
+
 - name: DEBUG VARIABLES
   hosts: all
   gather_facts: "{{ remote_facts|bool if remote_facts is defined else
