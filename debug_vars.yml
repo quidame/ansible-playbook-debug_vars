@@ -158,9 +158,50 @@
       debug:
         var: variables
 
-    - name: display duplicate variables
-      debug:
-        var: duplicates
+
+    # This block is to trigger a handled error when:
+    #
+    # - a lot of variables are declared more than once, that may happen because
+    #   of a lack of factorization in their valorization, or typically when a
+    #   host has been mistakenly put in a group. For example if host `foobar`
+    #   is member of `roma` group of webservers, and has been forgotten in
+    #   another group of webservers, say `goteborg`. Deployment on `foobar`
+    #   may as well never fail, as long as all variables set for `goteborg`
+    #   are set for `roma` too, and as long as `roma` has precedence over
+    #   `goteborg`, and as long as nothing evolves. Do you feel the ghost
+    #   behind the door ?
+    #
+    # - a same variable is declared more than twice, that means it is difficult
+    #   to follow it through the directory trees, and easy to forget the right
+    #   place to set it for good. That may happen when:
+    #   * the variable is set in group_vars/all, overridden for a group, then
+    #     overridden for the host. It may be the right way, but you should ask
+    #     if it is possible to get better factorization of the value, that may
+    #     lead to remove one ore more declarations.
+    #   * the variable is errouneously set for a group that should not hold it,
+    #     or the host is member of a group by mistake, or because of a mess in
+    #     multi-instanciated services variables, or whatever you want, but that
+    #     is NOGOOAALL (NOt GOOd At ALL), aka « no goal ».
+    #
+    - name: catch overridden variables
+      block:
+        - name: catch overridden variables (fail if too much)
+          debug:
+            var: duplicates
+          # Fail if more than 10% of variables are overridden
+          failed_when: result.stdout_lines|unique|length / duplicates|list|length < 10
+
+        - name: fail if variables are overridden twice and more
+          debug:
+            var: multicates
+          when: multicates != {}
+          failed_when: true
+
+      rescue:
+        - name: "OVERRIDDEN VARIABLES"
+          debug:
+            msg: "it's time to do things simple and burn the gaz factory"
+
       when: duplicates != {}
       vars:
         # It uses a pythonic count() method, as there is no such filter in jinja2
@@ -170,8 +211,15 @@
               "{{ dup }}": "{{ result.stdout_lines.count(dup) }}"{{ '' if loop.last else ',' }}
             {% endfor %}
           }
+        multicates: |
+          {
+            {% for dup in variables if result.stdout_lines.count(dup) > 2 %}
+              "{{ dup }}": "{{ result.stdout_lines.count(dup) }}"{{ '' if loop.last else ',' }}
+            {% endfor %}
+          }
 
 
+    # This is the primary purpose:
     - name: catch undefined variables
       block:
         - name: evaluate variables (fail if undefined and not filtered)
