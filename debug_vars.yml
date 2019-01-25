@@ -177,7 +177,7 @@
     #   * the variable is set in group_vars/all, overridden for a group, then
     #     overridden for the host. It may be the right way, but you should ask
     #     if it is possible to get better factorization of the value, that may
-    #     lead to remove one ore more declarations.
+    #     lead to remove one or more declarations.
     #   * the variable is errouneously set for a group that should not hold it,
     #     or the host is member of a group by mistake, or because of a mess in
     #     multi-instanciated services variables, or whatever you want, but that
@@ -208,13 +208,13 @@
         duplicates: |
           {
             {% for dup in variables if result.stdout_lines.count(dup) > 1 %}
-              "{{ dup }}": "{{ result.stdout_lines.count(dup) }}"{{ '' if loop.last else ',' }}
+            "{{ dup }}": "{{ result.stdout_lines.count(dup) }}"{{ '' if loop.last else ',' }}
             {% endfor %}
           }
         multicates: |
           {
             {% for dup in variables if result.stdout_lines.count(dup) > 2 %}
-              "{{ dup }}": "{{ result.stdout_lines.count(dup) }}"{{ '' if loop.last else ',' }}
+            "{{ dup }}": "{{ result.stdout_lines.count(dup) }}"{{ '' if loop.last else ',' }}
             {% endfor %}
           }
 
