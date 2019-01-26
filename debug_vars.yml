@@ -208,13 +208,13 @@
         duplicates: |
           {
             {% for dup in variables if result.stdout_lines.count(dup) > 1 %}
-            "{{ dup }}": "{{ result.stdout_lines.count(dup) }}"{{ '' if loop.last else ',' }}
+            "{{ dup }}": {{ result.stdout_lines.count(dup) }}{{ '' if loop.last else ',' }}
             {% endfor %}
           }
         multicates: |
           {
             {% for dup in variables if result.stdout_lines.count(dup) > 2 %}
-            "{{ dup }}": "{{ result.stdout_lines.count(dup) }}"{{ '' if loop.last else ',' }}
+            "{{ dup }}": {{ result.stdout_lines.count(dup) }}{{ '' if loop.last else ',' }}
             {% endfor %}
           }
 
