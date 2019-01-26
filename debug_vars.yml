@@ -159,6 +159,76 @@
         var: variables
 
 
+    # This tries to check namespaces by following basic rules:
+    # - the number of single-word variables should be small
+    # - the number of prefixes used only once should be small
+    # - the number of prefixes should not be high
+    - name: check namespaces of variables
+      block:
+        - name: check namespaces of variables (fail if too many single words)
+          debug:
+            var: onewords
+          # Fail if the number of single-word variable names is more than 25%
+          # of the total number of variables. Really, this should not happen.
+          failed_when: result.stdout_lines|unique|length / onewords|list|length < 4
+          ignore_errors: true
+          register: _onewords_
+
+        - name: check namespaces of variables (fail if prefixes have too low average use)
+          debug:
+            var: prefixes
+          # Fail if the average use of prefixes is less than 4 times
+          failed_when: result.stdout_lines|unique|length / prefixes|list|length < 5
+          ignore_errors: true
+          register: _prefixes_
+
+        - name: check namespaces of variables (fail if too many prefixes are used once)
+          debug:
+            var: usedonce
+          # Fail if the number of prefixes used once is more than 50% of all
+          # prefixes
+          failed_when: prfxs|unique|length / usedonce|length < 2
+          ignore_errors: true
+          register: _usedonce_
+
+        - name: fail because of a big mess in your namespaces
+          fail:
+            msg: "it's time to do things simple and burn the gaz factory"
+          when:
+            - _onewords_ is failed or _prefixes_ is failed
+            - _prefixes_ is failed or _usedonce_ is failed
+            - _usedonce_ is failed or _onewords_ is failed
+            # That could also be written:
+            #- ( _onewords_ is failed and _prefixes_ is failed ) or
+            #  ( _prefixes_ is failed and _usedonce_ is failed ) or
+            #  ( _usedonce_ is failed and _onewords_ is failed )
+
+      rescue:
+        - name: "CONFUSING VARIABLES"
+          debug:
+            msg: "it's time to do things simple and burn the gaz factory"
+
+      vars:
+        prfxs: |
+          [
+            {% for name in result.stdout_lines|unique if '_' in name|string %}
+              "{{ name | regex_replace('_.+$', '') }}"{{ '' if loop.last else ',' }}
+            {% endfor %}
+          ]
+        prefixes: |
+          {
+            {% for pfx in prfxs|sort|unique %}
+            "{{ pfx }}": {{ prfxs.count(pfx) }}{{ '' if loop.last else ',' }}
+            {% endfor %}
+          }
+        usedonce: |
+          [
+            {% for pfx in prfxs|sort|unique if prfxs.count(pfx) == 1 %}
+            "{{ pfx }}"{{ '' if loop.last else ',' }}{% endfor %}
+          ]
+        onewords: "{{ result.stdout_lines | unique | select('match','^[a-zA-Z0-9]+$') | list }}"
+
+
     # This block is to trigger a handled error when:
     #
     # - a lot of variables are declared more than once, that may happen because
