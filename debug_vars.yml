@@ -132,6 +132,8 @@
       connection: local
       register: result
       changed_when: false
+      tags:
+        - always
 
     - name: set list of variables
       set_fact:
@@ -152,11 +154,15 @@
             else %}{{ [check_vars] | flatten | sort | unique }}{%
             endif
           %}
+      tags:
+        - always
 
 
     - name: display list of variables
       debug:
         var: variables
+      tags:
+        - listvars
 
 
     # This tries to check namespaces by following basic rules:
@@ -227,6 +233,8 @@
             "{{ pfx }}"{{ '' if loop.last else ',' }}{% endfor %}
           ]
         onewords: "{{ result.stdout_lines | unique | select('match','^[a-zA-Z0-9]+$') | list }}"
+      tags:
+        - namespaces
 
 
     # This block is to trigger a handled error when:
@@ -287,6 +295,8 @@
             "{{ dup }}": {{ result.stdout_lines.count(dup) }}{{ '' if loop.last else ',' }}
             {% endfor %}
           }
+      tags:
+        - overridden
 
 
     # This is the primary purpose:
@@ -321,3 +331,5 @@
             errors: "{{ digest | difference(['']) }}"
           failed_when: errors|length > assume_error|int
 
+      tags:
+        - undefined
