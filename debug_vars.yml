@@ -255,7 +255,7 @@
     #
     - name: catch overridden variables
       block:
-        - name: catch overridden variables (fail if too much)
+        - name: catch overridden variables (fail if too many)
           debug:
             var: duplicates
           # Fail if more than 10% of variables are overridden
