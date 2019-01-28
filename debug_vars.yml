@@ -1,5 +1,5 @@
 ---
-# DEBUG VARIABLES
+# DEBUG VARIABLES {{{
 #
 # This is a simple, short, standalone and stupid playbook to track undefined
 # user-defined variables declared in `group_vars` and `host_vars` directories
@@ -27,6 +27,11 @@
 #foo: "{{ ansible_fqdn }}"
 #
 #
+# Additionally, this playbook performs checks against variables namespaces and
+# overrides. The related tasks are only informative and don't cause a failure
+# for the entire play (but only for the blocks they're in). These tasks aren't
+# performed at all if the list of variables is based upon user input.
+#
 # Without customization, this playbook will fail in almost all cases, i.e. it
 # will report errors about undefined variables.  If it is not the case, you
 # should first ensure that clear passwords are not hardcoded in your ansible's
@@ -34,13 +39,17 @@
 #
 # Variables that control the behavior of this playbook:
 #
-# | NAME                     | SHORTCUT     | TYPE   | DEFAULT           |
-# | ------------------------ | ------------ | ------ | ----------------- |
-# | debug_vars__remote_facts | remote_facts | bool   | False             |
-# | debug_vars__regex_filter | regex_filter | regex  | : (match nothing) |
-# | debug_vars__assume_error | assume_error | int    | 0                 |
-# | debug_vars__check_vars   | check_vars   | list,  | []                |
-# |                          |              | string |                   |
+# | NAME                     | SHORTCUT     | TYPE   | DEFAULT |
+# | ------------------------ | ------------ | ------ | ------- |
+# | debug_vars__remote_facts | remote_facts | bool   | False   |
+# | debug_vars__error_assume | error_assume | int    | 0       |
+# | debug_vars__error_filter | error_filter | regex  | ''      |
+# | debug_vars__from_pattern | from_pattern | regex  | ''      |
+# | debug_vars__from_list    | from_list    | list,  | []      |
+# |                          |              | string |         |
+#
+#
+# FALSE POSITIVE WORKAROUNDS
 #
 # * debug_vars__remote_facts
 #   When `True`, facts are gathered on the remote host, so variables whose the
@@ -49,22 +58,26 @@
 #   consistency can be checked apart (no need of credentials to login to the
 #   hosts, even no need of the hosts themselves).
 #
-# * debug_vars__regex_filter
+# * debug_vars__error_filter
 #   Because of not gathering facts, or because of vaulted values, or because
 #   they are set by a specific role, or for whatever reason you want, some
 #   variables may be legitimally undefined when running this playbook. For
 #   example, with passwords vaulted and retrieved with an `include_vars`:
-#   debug_vars__regex_filter: '_password$'
+#   debug_vars__error_filter: '_password$'
 #   And yes, if you can't catch all of them in a simple regex, maybe it's time
 #   to think to refactor them.
 #
-# * debug_vars__assume_error
+# * debug_vars__error_assume
 #   A kind of quick start for the impatient. Instead of ignoring errors
 #   globally, and if a regex is too hard to write or maintain, assume a given
 #   number of errors. For example, assume 2 undefined variables. Unlike the
-#   regex_filter results, assumed errors are reported in the last task.
+#   error_filter results, assumed errors are reported in the list of errors,
+#   but will not cause the playbook failure.
 #
-# * debug_vars__check_vars
+#
+# VARIABLES SUBSETS
+#
+# * debug_vars__from_list
 #   A specific variable, or a specific list of variables. When defined, it
 #   overrides the dynamic query of all the variables applying to the host,
 #   and only the provided variable names are evaluated. This can be used to
@@ -76,13 +89,22 @@
 #   the YAML list: [ "bar", "baz", "foo", "foobar", "foobaz" ] (sorted and
 #   deduplicated).
 #
+# * debug_vars__from_pattern
+#   When defined, it filters the dynamic query of all the variables applying
+#   to the host, and only the variable matching the provided regular expression
+#   are evaluated. For example, 'from_pattern=mail' will restrict list of vars
+#   to those containing the 'mail' string (anywhere in the name; the pattern
+#   also supports anchors).
+#
 #
 # Usage:
 # - set debug_vars__* variables in group_vars/
 # - use the shortcuts as extra-vars in commandline
 #
 # Example:
-# ansible-playbook debug_vars.yml -e remote_facts=yes -e regex_filter='_password$'
+# ansible-playbook debug_vars.yml -e remote_facts=yes -e error_filter='_password$'
+#
+#}}}
 
 
 - name: DEBUG VARIABLES
@@ -91,39 +113,23 @@
                     debug_vars__remote_facts|default(False)|bool }}"
 
   vars:
-    oh_my_bad: '^VARIABLE IS NOT DEFINED!'
-    check_vars: "{{ debug_vars__check_vars|default([]) }}"
-    regex_filter: "{{ debug_vars__regex_filter|default(':') }}"
-    assume_error: "{{ debug_vars__assume_error|default(0) }}"
-
-    varfiles_all:
-      - "group_vars/all"
-      - "group_vars/all.yml"
-      - "{{ inventory_dir }}/group_vars/all"
-      - "{{ inventory_dir }}/group_vars/all.yml"
-    varfiles_groups: |
-      [
-        {% for g in group_names %}
-          "group_vars/{{ g }}",
-          "group_vars/{{ g }}.yml",
-          "{{ inventory_dir }}/group_vars/{{ g }}",
-          "{{ inventory_dir }}/group_vars/{{ g }}.yml"
-          {{ '' if loop.last else ',' }}
-        {% endfor %}
-      ]
-    varfiles_host:
-      - "host_vars/{{ inventory_hostname }}"
-      - "host_vars/{{ inventory_hostname }}.yml"
-      - "{{ inventory_dir }}/host_vars/{{ inventory_hostname }}"
-      - "{{ inventory_dir }}/host_vars/{{ inventory_hostname }}.yml"
+    from_list: "{{ debug_vars__from_list|default([]) }}"
+    from_pattern: "{{ debug_vars__from_pattern|default('') }}"
+    error_filter: "{{ debug_vars__error_filter|default('') }}"
+    error_assume: "{{ debug_vars__error_assume|default(0) }}"
 
   tasks:
+
+    ############################################################################
+    # GET LIST OF VARIABLES
+    #
     # In all cases, some files or directories don't exist, and grep will fail
     # (exit code 2). Piping its output to sort allows the entire command to
     # never fail.  By design, elements of the list aren't deduplicated at this
     # step, so it is possible to see how many times a variable is declared,
     # i.e. how much the repo is simple, clear and easy to understand and to
     # maintain, or is a gaz factory.
+    #
     - name: get list of variables
       shell: >
         grep -Ehors '^[_a-zA-Z0-9]+' {{ ( varfiles_all + varfiles_groups + varfiles_host ) | join( ' ' ) }} |
@@ -132,9 +138,38 @@
       connection: local
       register: result
       changed_when: false
+      vars:
+        varfiles_all:
+          - "group_vars/all"
+          - "group_vars/all.yml"
+          - "{{ inventory_dir }}/group_vars/all"
+          - "{{ inventory_dir }}/group_vars/all.yml"
+        varfiles_host:
+          - "host_vars/{{ inventory_hostname }}"
+          - "host_vars/{{ inventory_hostname }}.yml"
+          - "{{ inventory_dir }}/host_vars/{{ inventory_hostname }}"
+          - "{{ inventory_dir }}/host_vars/{{ inventory_hostname }}.yml"
+        varfiles_groups: |
+          [
+            {% for g in group_names %}
+              "group_vars/{{ g }}",
+              "group_vars/{{ g }}.yml",
+              "{{ inventory_dir }}/group_vars/{{ g }}",
+              "{{ inventory_dir }}/group_vars/{{ g }}.yml"
+              {{ '' if loop.last else ',' }}
+            {% endfor %}
+          ]
       tags:
         - always
 
+
+    ############################################################################
+    # SET LIST OF VARIABLES
+    #
+    # Set the list of variables from the previous dynamic query, or from user
+    # input (from_list), or by intersecting the dynamic query and user input
+    # (from_pattern).
+    #
     - name: set list of variables
       set_fact:
         # We accept all relevant input formats to get a final yaml list, sorted:
@@ -145,19 +180,29 @@
         # It uses a pythonic split() method, as there is no such filter in jinja2
         variables: |
           {%
-            if check_vars in [[],'']
-              %}{{ result.stdout_lines | unique }}{%
-            elif check_vars|type_debug == 'list'
-              %}{{ check_vars | sort | unique }}{%
-            elif ',' in check_vars|string or ' ' in check_vars|string
-              %}{{ (check_vars|regex_replace( ' ', ',' )).split( ',' ) | difference(['']) | sort | unique }}{%
-            else %}{{ [check_vars] | flatten | sort | unique }}{%
+            if not from_list and not from_pattern
+              %}{{ host_vars | unique }}{%
+            elif from_pattern
+              %}{{ host_vars | unique | select('search', from_pattern) | list }}{%
+            elif from_list|type_debug != 'list'
+              %}{{ (from_list|regex_replace( ' ', ',' )).split( ',' ) | difference(['']) | sort | unique }}{%
+            else
+              %}{{ from_list | sort | unique }}{%
             endif
           %}
+        # This building (vars + set_fact) allows the current task to:
+        # - set host_vars in 'vars' FOR the task (make it usable by set_fact)
+        # - set host_vars FROM the task (set_fact) FOR the rest of the playbook
+        host_vars: "{{ host_vars }}"
+      vars:
+        host_vars: "{{ result.stdout_lines }}"
       tags:
         - always
 
 
+    ############################################################################
+    # DISPLAY LIST OF VARIABLES
+    #
     - name: display list of variables
       debug:
         var: variables
@@ -165,41 +210,56 @@
         - listvars
 
 
-    # This tries to check namespaces by following basic rules:
+    ############################################################################
+    # CHECK NAMESPACES OF VARIABLES
+    #
+    # This tries to check namespaces by following basic criteria:
     # - the number of single-word variables should be small
     # - the number of prefixes used only once should be small
-    # - the number of prefixes should not be high
+    # - the average number of times a prefix is used should be high
+    #
+    # A single word variable may be either 'application', '_app_',
+    # or even '____' (yes, it is).  A prefix is what comes before
+    # a double underscore, if any, otherwise what comes before the
+    # first underscore.
+    #
     - name: check namespaces of variables
       block:
-        - name: check namespaces of variables (fail if too many single words)
+        - name: fail if too many vars are single words
           debug:
             var: onewords
-          # Fail if the number of single-word variable names is more than 25%
-          # of the total number of variables. Really, this should not happen.
-          failed_when: result.stdout_lines|unique|length / onewords|list|length < 4
-          ignore_errors: true
           register: _onewords_
-
-        - name: check namespaces of variables (fail if prefixes have too low average use)
-          debug:
-            var: prefixes
-          # Fail if the average use of prefixes is less than 4 times
-          failed_when: result.stdout_lines|unique|length / prefixes|list|length < 5
           ignore_errors: true
-          register: _prefixes_
+          # Fail if the number of single-word variable names is more than N%
+          # of the total number of variables and more than N (absolute).
+          failed_when:
+            - onewords|length * 100 / host_vars|unique|length > 10
+            - onewords|length > 10
 
-        - name: check namespaces of variables (fail if too many prefixes are used once)
+        - name: fail if too many prefixes are used only once
           debug:
             var: usedonce
-          # Fail if the number of prefixes used once is more than 50% of all
-          # prefixes
-          failed_when: prfxs|unique|length / usedonce|length < 2
-          ignore_errors: true
           register: _usedonce_
+          ignore_errors: true
+          # Fail if the number of prefixes used once is more than N% of the
+          # total number of variables and more than N (absolute).
+          failed_when:
+            - usedonce|length * 100 / host_vars|unique|length > 10
+            - usedonce|length > 10
+
+        - name: fail if prefixes have too low average use
+          debug:
+            var: prefixes
+          register: _prefixes_
+          ignore_errors: true
+          # Fail if the average use of any prefix is less than X occurences
+          failed_when:
+            - prfxs|length / prefixes|list|length < 4
 
         - name: fail because of a big mess in your namespaces
-          fail:
-            msg: "it's time to do things simple and burn the gaz factory"
+          debug:
+            msg: "when you can do it simple, do it simple"
+          failed_when: true
           when:
             - _onewords_ is failed or _prefixes_ is failed
             - _prefixes_ is failed or _usedonce_ is failed
@@ -215,10 +275,16 @@
             msg: "it's time to do things simple and burn the gaz factory"
 
       vars:
+        # Search for 'prefix__*', 'another_prefix__*', 'yet_another_prefix__*',
+        # if any, then just for 'prefix_*'.
         prfxs: |
           [
-            {% for name in result.stdout_lines|unique if '_' in name|string %}
-              "{{ name | regex_replace('_.+$', '') }}"{{ '' if loop.last else ',' }}
+            {% for name in host_vars|unique %}
+              {% if name|regex_search('^[a-zA-Z0-9]+(_[a-zA-Z0-9]+)?__[a-zA-Z0-9]+') %}
+              "{{ name | regex_replace('__.+$', '__') }}"{{ '' if loop.last else ',' }}
+              {% elif name|regex_search('^[a-zA-Z0-9]+_[a-zA-Z0-9]+') %}
+              "{{ name | regex_replace('_.+$', '_') }}"{{ '' if loop.last else ',' }}
+              {% endif %}
             {% endfor %}
           ]
         prefixes: |
@@ -232,11 +298,14 @@
             {% for pfx in prfxs|sort|unique if prfxs.count(pfx) == 1 %}
             "{{ pfx }}"{{ '' if loop.last else ',' }}{% endfor %}
           ]
-        onewords: "{{ result.stdout_lines | unique | select('match','^[a-zA-Z0-9]+$') | list }}"
+        onewords: "{{ host_vars | unique | select('search','^_*[a-zA-Z0-9]*_*$') | list }}"
       tags:
-        - namespaces
+        - "{{ 'namespaces' if not from_list and not from_pattern else 'never' }}"
 
 
+    ############################################################################
+    # CATCH OVERRIDDEN VARIABLES
+    #
     # This block is to trigger a handled error when:
     #
     # - a lot of variables are declared more than once, that may happen because
@@ -266,8 +335,11 @@
         - name: catch overridden variables (fail if too many)
           debug:
             var: duplicates
-          # Fail if more than 10% of variables are overridden
-          failed_when: result.stdout_lines|unique|length / duplicates|list|length < 10
+          # Fail if more than N% of variables are overridden and if overridden
+          # variables are more than N (absolute).
+          failed_when:
+            - duplicates|list|length * 100 / host_vars|unique|length > 10
+            - duplicates|list|length > 10
 
         - name: fail if variables are overridden twice and more
           debug:
@@ -285,21 +357,25 @@
         # It uses a pythonic count() method, as there is no such filter in jinja2
         duplicates: |
           {
-            {% for dup in variables if result.stdout_lines.count(dup) > 1 %}
-            "{{ dup }}": {{ result.stdout_lines.count(dup) }}{{ '' if loop.last else ',' }}
+            {% for dup in variables if host_vars.count(dup) > 1 %}
+            "{{ dup }}": {{ host_vars.count(dup) }}{{ '' if loop.last else ',' }}
             {% endfor %}
           }
         multicates: |
           {
-            {% for dup in variables if result.stdout_lines.count(dup) > 2 %}
-            "{{ dup }}": {{ result.stdout_lines.count(dup) }}{{ '' if loop.last else ',' }}
+            {% for dup in variables if host_vars.count(dup) > 2 %}
+            "{{ dup }}": {{ host_vars.count(dup) }}{{ '' if loop.last else ',' }}
             {% endfor %}
           }
       tags:
-        - overridden
+        - "{{ 'overridden' if not from_list and not from_pattern else 'never' }}"
 
 
-    # This is the primary purpose:
+    ############################################################################
+    # CATCH UNDEFINED VARIABLES
+    #
+    # This is the primary purpose of this playbook.
+    #
     - name: catch undefined variables
       block:
         - name: evaluate variables (fail if undefined and not filtered)
@@ -309,27 +385,29 @@
           register: debug
           failed_when:
             - debug[item]|string | regex_search(oh_my_bad)
-            - not item | regex_search(regex_filter)
+            - not item | regex_search(error_filter)
 
         - name: SUCCESS
           debug:
             msg: "all variables ({{ variables | length }}) are defined{{
-              '' if regex_filter == ':' else ' - or filtered by this regex: `%s`' % regex_filter }}"
+              '' if error_filter == '' else ' - or filtered by this regex: `%s`' % error_filter }}"
 
       rescue:
-        - name: "UNDEFINED VARIABLE(S) [/{{ variables | length }}]"
+        - name: "UNDEFINED VARIABLES"
           debug:
             var: errors
           vars:
             digest: |
               [
                 {% for res in debug.results %}{% for key in res %}
-                {% if res[key]|string | regex_search(oh_my_bad) and not key|regex_search(regex_filter) %}
+                {% if res[key]|string | regex_search(oh_my_bad) and not key|regex_search(error_filter) %}
                 "{{ key }}"{% else %}""{% endif %}{{ '' if loop.last else ',' }}
                 {% endfor %}{{ '' if loop.last else ',' }}{% endfor %}
               ]
             errors: "{{ digest | difference(['']) }}"
-          failed_when: errors|length > assume_error|int
+          failed_when: errors|length > error_assume|int
 
+      vars:
+        oh_my_bad: '^VARIABLE IS NOT DEFINED!'
       tags:
-        - undefined
+        - notdefined
