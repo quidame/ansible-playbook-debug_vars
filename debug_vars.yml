@@ -200,7 +200,7 @@
         # YAML list, single word, comma-space-separated list of words. Example:
         #     foo, bar,foobar baz   foobaz foo, ,,bar
         # will be converted to:
-        #     [ "bar", "baz", "foo", "boobar", "foobaz" ]
+        #     [ "bar", "baz", "foo", "foobar", "foobaz" ]
         # It uses a pythonic split() method, as there is no such filter in jinja2
         variables: |
           {%
