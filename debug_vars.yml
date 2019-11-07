@@ -441,7 +441,8 @@
     ############################################################################
     # CATCH UNDEFINED VARIABLES
     #
-    # This is the primary purpose of this playbook.
+    # This is the primary purpose of this playbook (the reason why it is said
+    # 'simple, short, standalone and stupid' at the beginning of the file).
     #
     - name: "catch undefined variables"
       block:
