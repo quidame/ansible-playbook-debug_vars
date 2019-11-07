@@ -347,9 +347,9 @@
         prfxs: |
           [
             {% for name in host_vars|unique %}
-              {% if name|regex_search('^[a-zA-Z0-9]+(_[a-zA-Z0-9]+)?__[a-zA-Z0-9]+') %}
+              {% if name is match('^[a-zA-Z0-9]+(_[a-zA-Z0-9]+)?__[a-zA-Z0-9]+') %}
               "{{ name | regex_replace('__.+$', '__') }}"{{ '' if loop.last else ',' }}
-              {% elif name|regex_search('^[a-zA-Z0-9]+_[a-zA-Z0-9]+') %}
+              {% elif name is match('^[a-zA-Z0-9]+_[a-zA-Z0-9]+') %}
               "{{ name | regex_replace('_.+$', '_') }}"{{ '' if loop.last else ',' }}
               {% endif %}
             {% endfor %}
@@ -452,8 +452,8 @@
           loop: "{{ variables }}"
           register: debug
           failed_when:
-            - debug[item]|string | regex_search(oh_my_bad)
-            - not item | regex_search(error_filter)
+            - debug[item]|string is search(oh_my_bad)
+            - item is not search(error_filter)
 
         - name: "SUCCESS"
           debug:
@@ -468,7 +468,7 @@
             digest: |
               [
                 {% for res in debug.results %}{% for key in res %}
-                {% if res[key]|string | regex_search(oh_my_bad) and not key|regex_search(error_filter) %}
+                {% if res[key]|string is search(oh_my_bad) and key is not search(error_filter) %}
                 "{{ key }}"{% else %}""{% endif %}{{ '' if loop.last else ',' }}
                 {% endfor %}{{ '' if loop.last else ',' }}{% endfor %}
               ]
