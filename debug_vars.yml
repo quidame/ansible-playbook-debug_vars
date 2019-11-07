@@ -164,7 +164,7 @@
     # i.e. how much the repo is simple, clear and easy to understand and to
     # maintain, or is a gaz factory.
     #
-    - name: get list of variables
+    - name: "get list of variables"
       shell: >
         grep -Ehors '^[_a-zA-Z0-9]+' {{ ( varfiles_all + varfiles_groups + varfiles_host ) | join( ' ' ) }} |
         sort
@@ -204,7 +204,7 @@
     # input (from_list), or by intersecting the dynamic query and user input
     # (from_pattern).
     #
-    - name: set list of variables
+    - name: "set list of variables"
       set_fact:
         # We accept all relevant input formats to get a final yaml list, sorted:
         # YAML list, single word, comma-space-separated list of words. Example:
@@ -231,7 +231,7 @@
       vars:
         ansible_special_vars: |
           [
-            {% if special_vars %}
+            {% if special_vars | bool %}
             'ansible_check_mode',
             'ansible_dependent_role_names',
             'ansible_diff_mode',
@@ -268,7 +268,7 @@
     ############################################################################
     # DISPLAY LIST OF VARIABLES
     #
-    - name: display list of variables
+    - name: "display list of variables"
       debug:
         var: variables
       tags:
@@ -288,9 +288,9 @@
     # a double underscore, if any, otherwise what comes before the
     # first underscore.
     #
-    - name: check namespaces of variables
+    - name: "check namespaces of variables"
       block:
-        - name: fail if too many vars are single words
+        - name: "fail if too many variables are single words"
           debug:
             var: onewords
           register: _onewords_
@@ -301,7 +301,7 @@
             - onewords|length * 100 / host_vars|unique|length > pfx_max_none|int
             - onewords|length > pfx_max_none|int
 
-        - name: fail if too many prefixes are used only once
+        - name: "fail if too many prefixes are used only once"
           debug:
             var: usedonce
           register: _usedonce_
@@ -312,7 +312,7 @@
             - usedonce|length * 100 / host_vars|unique|length > pfx_max_once|int
             - usedonce|length > pfx_max_once|int
 
-        - name: fail if prefixes have too low average use
+        - name: "fail if prefixes have too low average use"
           debug:
             var: prefixes
           register: _prefixes_
@@ -323,7 +323,7 @@
 
           # This task will fail if at least 2 of the 3 tasks above have failed,
           # otherwise it is skipped.
-        - name: fail because of a big mess in your namespaces
+        - name: "fail because of a big mess in your namespaces"
           debug:
             msg: "when you can do it simple, do it simple"
           failed_when: true
@@ -397,9 +397,9 @@
     #     multi-instanciated services variables, or whatever you want, but that
     #     is NOGOOAALL (NOt GOOd At ALL), aka « no goal ».
     #
-    - name: catch overridden variables
+    - name: "catch overridden variables"
       block:
-        - name: catch overridden variables (fail if too many)
+        - name: "fail if too many variables are overridden"
           debug:
             var: duplicates
           # Fail if more than N% of variables are overridden and if overridden
@@ -408,7 +408,7 @@
             - duplicates|list|length * 100 / host_vars|unique|length > 10
             - duplicates|list|length > 10
 
-        - name: fail if variables are overridden twice and more
+        - name: "fail if variables are overridden twice and more"
           debug:
             var: multicates
           when: multicates != {}
@@ -443,7 +443,7 @@
     #
     # This is the primary purpose of this playbook.
     #
-    - name: catch undefined variables
+    - name: "catch undefined variables"
       block:
         - name: evaluate variables (fail if undefined and not filtered)
           debug:
@@ -454,7 +454,7 @@
             - debug[item]|string | regex_search(oh_my_bad)
             - not item | regex_search(error_filter)
 
-        - name: SUCCESS
+        - name: "SUCCESS"
           debug:
             msg: "all variables ({{ variables | length }}) are defined{{
               '' if error_filter == '' else ' - or filtered by this regex: `%s`' % error_filter }}"
