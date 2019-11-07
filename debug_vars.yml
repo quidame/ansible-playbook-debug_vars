@@ -41,6 +41,7 @@
 #
 # | NAME                     | SHORTCUT     | TYPE   | DEFAULT |
 # | ------------------------ | ------------ | ------ | ------- |
+# | debug_vars__special_vars | special_vars | bool   | False   |
 # | debug_vars__remote_facts | remote_facts | bool   | False   |
 # | debug_vars__error_filter | error_filter | regex  | ''      |
 # | debug_vars__error_assume | error_assume | int    | 0       |
@@ -53,6 +54,14 @@
 #
 #
 # FALSE POSITIVE WORKAROUNDS
+#
+# * debug_vars__special_vars
+#   When `True`, displays the ansible special variables in addition to inventory
+#   variables. The special variables are those fully controlled by ansible, set
+#   from the controller (not gathered remotely) and that can't be overridden by
+#   the user. This for example includes `ansible_version`, `groupe_names`, or
+#   `inventory_hostname_short`. For a complete list, see
+#   https://docs.ansible.com/ansible/latest/reference_appendices/special_variables.html
 #
 # * debug_vars__remote_facts
 #   When `True`, facts are gathered on the remote host, so variables whose the
@@ -141,6 +150,7 @@
     pfx_min_uses: "{{ debug_vars__pfx_min_uses|default(4) }}"
     pfx_max_none: "{{ debug_vars__pfx_max_none|default(10) }}"
     pfx_max_once: "{{ debug_vars__pfx_max_once|default(10) }}"
+    special_vars: "{{ debug_vars__special_vars|default(False) }}"
 
   tasks:
 
@@ -219,7 +229,38 @@
         # - set host_vars FROM the task (set_fact) FOR the rest of the playbook
         host_vars: "{{ host_vars }}"
       vars:
-        host_vars: "{{ result.stdout_lines }}"
+        ansible_special_vars: |
+          [
+            {% if special_vars %}
+            'ansible_check_mode',
+            'ansible_dependent_role_names',
+            'ansible_diff_mode',
+            'ansible_forks',
+            'ansible_inventory_sources',
+            'ansible_limit',
+            'ansible_loop',
+            'ansible_loop_var',
+            'ansible_index_var',
+            'ansible_parent_role_names',
+            'ansible_parent_role_paths',
+            'ansible_play_batch',
+            'ansible_play_hosts',
+            'ansible_play_hosts_all',
+            'ansible_play_name',
+            'ansible_play_role_names',
+            'ansible_playbook_python',
+            'ansible_role_names',
+            'ansible_run_tags',
+            'ansible_search_path',
+            'ansible_skip_tags',
+            'ansible_verbosity',
+            'ansible_version',
+            'group_names',
+            'inventory_hostname',
+            'inventory_hostname_short'
+            {% endif %}
+          ]
+        host_vars: "{{ result.stdout_lines + ansible_special_vars }}"
       tags:
         - always
 
