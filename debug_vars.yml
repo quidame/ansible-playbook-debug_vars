@@ -53,8 +53,6 @@
 # |                          |              | string |         |
 #
 #
-# FALSE POSITIVE WORKAROUNDS
-#
 # * debug_vars__special_vars
 #   When `True`, displays the ansible special variables in addition to inventory
 #   variables. The special variables are those fully controlled by ansible, set
@@ -62,6 +60,9 @@
 #   the user. This for example includes `ansible_version`, `groupe_names`, or
 #   `inventory_hostname_short`. For a complete list, see
 #   https://docs.ansible.com/ansible/latest/reference_appendices/special_variables.html
+#
+#
+# FALSE POSITIVE WORKAROUNDS
 #
 # * debug_vars__remote_facts
 #   When `True`, facts are gathered on the remote host, so variables whose the
@@ -75,7 +76,9 @@
 #   they are set by a specific role, or for whatever reason you want, some
 #   variables may be legitimally undefined when running this playbook. For
 #   example, with passwords vaulted and retrieved with an `include_vars`:
+#
 #   debug_vars__error_filter: '_password$'
+#
 #   And yes, if you can't catch all of them in a simple regex, maybe it's time
 #   to think to refactor them.
 #
